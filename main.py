@@ -1,12 +1,12 @@
 import telegram
 import requests
-import json
 import os
-from requests.exceptions import ReadTimeout, ConnectionError
-from dotenv import load_dotenv
 import argparse
 import textwrap
 import time
+from datetime import datetime
+from requests.exceptions import ReadTimeout, ConnectionError
+from dotenv import load_dotenv
 
 
 def main():
@@ -19,19 +19,21 @@ def main():
 
 
 def get_lesson_status_request(bot, telegram_chat_id):
-    """Get a respomse from Devman API."""
+    """Get a response from Devman API."""
+    url = "https://dvmn.org/api/long_polling/"
     headers = {"Authorization": os.environ["DEVMAN_API_TOKEN"]}
+    timestamp = datetime.now().timestamp()
     while True:
         try:
-            url = "https://dvmn.org/api/long_polling/"
-            response = requests.get(url, headers=headers, timeout=2)
+            payload = {"timestamp": timestamp}
+            response = requests.get(url, headers=headers, params=payload)
             response.raise_for_status()
-            response_data = json.loads(response.text)
-            if response_data["status"] == "found":
-                send_message(bot, response_data, telegram_chat_id)
-                headers.update(timestamp=str(response_data["last_attempt_timestamp"]))
+            lesson_review_data = response.json()
+            if lesson_review_data["status"] == "found":
+                send_message(bot, lesson_review_data, telegram_chat_id)
+                timestamp = lesson_review_data["last_attempt_timestamp"]
                 continue
-            headers.update(timestamp=str(response_data["timestamp_to_request"]))
+            timestamp = lesson_review_data["timestamp_to_request"]
 
         except ConnectionError as error:
             print(error)
@@ -41,12 +43,12 @@ def get_lesson_status_request(bot, telegram_chat_id):
             continue
 
 
-def send_message(bot, response_data, telegram_chat_id):
+def send_message(bot, lesson_review_data, telegram_chat_id):
     """Send a message to Telegram."""
-    _response_data = response_data["new_attempts"][0]
-    lesson_title = _response_data["lesson_title"]
-    status = ("Not OK" if _response_data["is_negative"] else "OK")
-    lesson_url = _response_data['lesson_url']
+    _lesson_review_data = lesson_review_data["new_attempts"][0]
+    lesson_title = _lesson_review_data["lesson_title"]
+    status = ("Not OK" if _lesson_review_data["is_negative"] else "OK")
+    lesson_url = _lesson_review_data['lesson_url']
     message = f"""
                 Преподаватель проверил работу!
                 {lesson_title}: {status}
